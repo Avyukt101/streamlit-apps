@@ -1,0 +1,121 @@
+import streamlit as st
+import yfinance as yf
+import pandas as pd
+import numpy as np
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+st.set_page_config(page_title="Stock Market App", layout="wide")
+
+# ---------------- SIDEBAR ----------------
+st.sidebar.title("📊 Stock Market App")
+
+ticker = st.sidebar.text_input("Stock Symbol", "AAPL")
+start_date = st.sidebar.date_input("Start Date", pd.to_datetime("2023-01-01"))
+end_date = st.sidebar.date_input("End Date", pd.to_datetime("today"))
+
+ma_period = st.sidebar.slider("Moving Average Period", 5, 50, 20)
+show_rsi = st.sidebar.checkbox("Show RSI", True)
+show_bb = st.sidebar.checkbox("Show Bollinger Bands", True)
+
+# ---------------- DATA ----------------
+@st.cache_data
+def load_data(symbol, start, end):
+    return yf.download(symbol, start=start, end=end)
+
+data = load_data(ticker, start_date, end_date)
+
+if data.empty:
+    st.error("No data found!")
+    st.stop()
+
+# ---------------- INDICATORS ----------------
+data["MA"] = data["Close"].rolling(ma_period).mean()
+
+# Bollinger Bands
+data["BB_Upper"] = data["MA"] + 2 * data["Close"].rolling(ma_period).std()
+data["BB_Lower"] = data["MA"] - 2 * data["Close"].rolling(ma_period).std()
+
+# RSI
+delta = data["Close"].diff()
+gain = (delta.where(delta > 0, 0)).rolling(14).mean()
+loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+rs = gain / loss
+data["RSI"] = 100 - (100 / (1 + rs))
+
+# ---------------- CHART ----------------
+fig = make_subplots(
+    rows=2 if show_rsi else 1,
+    cols=1,
+    shared_xaxes=True,
+    vertical_spacing=0.1,
+    row_heights=[0.7, 0.3] if show_rsi else [1]
+)
+
+fig.add_trace(go.Candlestick(
+    x=data.index,
+    open=data["Open"],
+    high=data["High"],
+    low=data["Low"],
+    close=data["Close"],
+    name="Price"
+), row=1, col=1)
+
+fig.add_trace(go.Scatter(
+    x=data.index,
+    y=data["MA"],
+    line=dict(color="orange"),
+    name="MA"
+), row=1, col=1)
+
+if show_bb:
+    fig.add_trace(go.Scatter(
+        x=data.index,
+        y=data["BB_Upper"],
+        line=dict(color="green", dash="dot"),
+        name="BB Upper"
+    ), row=1, col=1)
+
+    fig.add_trace(go.Scatter(
+        x=data.index,
+        y=data["BB_Lower"],
+        line=dict(color="red", dash="dot"),
+        name="BB Lower"
+    ), row=1, col=1)
+
+if show_rsi:
+    fig.add_trace(go.Scatter(
+        x=data.index,
+        y=data["RSI"],
+        line=dict(color="purple"),
+        name="RSI"
+    ), row=2, col=1)
+
+fig.update_layout(height=700, xaxis_rangeslider_visible=False)
+st.plotly_chart(fig, use_container_width=True)
+
+# ---------------- EXPORT ----------------
+st.subheader("⬇ Export Chart")
+if st.button("Export as HTML"):
+    fig.write_html("chart.html")
+    st.success("Saved as chart.html")
+
+if st.button("Export as PNG"):
+    fig.write_image("chart.png")
+    st.success("Saved as chart.png")
+
+# ---------------- PORTFOLIO ----------------
+st.subheader("📂 Portfolio Tracker")
+file = st.file_uploader("Upload CSV or Excel", type=["csv", "xlsx"])
+
+if file:
+    portfolio = pd.read_csv(file) if file.name.endswith("csv") else pd.read_excel(file)
+    st.dataframe(portfolio)
+
+# ---------------- CORRELATION ----------------
+st.subheader("🔗 Stock Correlation")
+symbols = st.multiselect("Select Stocks", ["AAPL", "MSFT", "GOOGL", "TSLA", "AMZN"])
+if symbols:
+    corr_data = yf.download(symbols, start=start_date, end=end_date)["Close"]
+    corr = corr_data.corr()
+    st.dataframe(corr)
