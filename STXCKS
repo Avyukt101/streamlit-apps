@@ -1,0 +1,79 @@
+import streamlit as st
+import yfinance as yf
+import pandas as pd
+import plotly.graph_objects as go
+
+st.set_page_config(page_title="AI Stock Assistant", layout="wide")
+
+# ---------------- AI LOGIC (Mock Assistant) ----------------
+def ai_assistant(user_input):
+    user_input = user_input.lower()
+
+    if "rsi" in user_input:
+        return "RSI (Relative Strength Index) shows whether a stock is overbought (>70) or oversold (<30)."
+    elif "moving average" in user_input or "ma" in user_input:
+        return "Moving Average smooths price data to identify trends."
+    elif "bollinger" in user_input:
+        return "Bollinger Bands show price volatility using standard deviation."
+    elif "buy" in user_input:
+        return "I can't give financial advice, but you can use RSI and trend analysis to make decisions."
+    elif "how to use" in user_input:
+        return "Enter a stock symbol, select dates, and analyze the chart using indicators."
+    else:
+        return "I'm your AI assistant 🤖 Ask me about stocks, indicators, or how to use this app."
+
+# ---------------- SIDEBAR AI CHAT ----------------
+st.sidebar.title("🤖 AI Assistant")
+
+if "chat" not in st.session_state:
+    st.session_state.chat = []
+
+user_question = st.sidebar.text_input("Ask me anything")
+
+if st.sidebar.button("Ask"):
+    reply = ai_assistant(user_question)
+    st.session_state.chat.append(("You", user_question))
+    st.session_state.chat.append(("AI", reply))
+
+for sender, msg in st.session_state.chat:
+    st.sidebar.markdown(f"**{sender}:** {msg}")
+
+# ---------------- MAIN APP ----------------
+st.title("📈 AI-Powered Stock Market App")
+
+symbol = st.text_input("Enter Stock Symbol", "AAPL")
+start = st.date_input("Start Date", pd.to_datetime("2023-01-01"))
+end = st.date_input("End Date", pd.to_datetime("today"))
+
+data = yf.download(symbol, start=start, end=end)
+
+if data.empty:
+    st.warning("No data found")
+else:
+    data["MA"] = data["Close"].rolling(20).mean()
+
+    fig = go.Figure()
+    fig.add_trace(go.Candlestick(
+        x=data.index,
+        open=data["Open"],
+        high=data["High"],
+        low=data["Low"],
+        close=data["Close"],
+        name="Price"
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=data.index,
+        y=data["MA"],
+        line=dict(color="orange"),
+        name="Moving Average"
+    ))
+
+    fig.update_layout(
+        height=600,
+        xaxis_rangeslider_visible=False
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+st.info("💬 Use the AI Assistant on the left for guidance")
